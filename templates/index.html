@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <title>네이버 맛집 검색</title>
+    <script type="text/javascript"
+            src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=8hv6fi2lvp&submodules=geocoder"></script>
+
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+
+    <meta property="og:title" content="맛집 지도"/>
+    <meta property="og:description" content="TV에 방영된 맛집정보"/>
+    <meta property="og:image" content="{{ url_for('static', filename='banner.jpg') }}"/>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+          crossorigin="anonymous">
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+            integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+            crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+            integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+            crossorigin="anonymous"></script>
+    <style>
+        * {
+            font-family: 'Jua', sans-serif;
+        }
+
+        .wrap {
+            width: 90%;
+            max-width: 900px;
+            margin: 10px auto;
+        }
+
+        .banner {
+            width: 100%;
+            height: 150px;
+            background-image: url("{{ url_for('static', filename= 'banner.jpg')}}");
+            background-position: center;
+            background-size: contain;
+            background-repeat: repeat;
+        }
+
+        h1.title {
+            color: white;
+            font-size: 3rem;
+        }
+
+        .matjip-list {
+            overflow: scroll;
+            width: 100%;
+            height: calc(20vh - 10px);
+            position: relative;
+        }
+
+        .card-title, .card-subtitle {
+            display: inline;
+        }
+
+        #map {
+            width: 100%;
+            height: 50vh;
+            margin: 20px auto 20px auto;
+        }
+
+        .iw-inner {
+            padding: 10px;
+            font-size: smaller;
+        }
+
+        i.fa-bookmark-o {
+            cursor: pointer;
+            color: red;
+        }
+
+        i.fa-bookmark {
+            cursor: pointer;
+            color: red;
+        }
+    </style>
+    <script>
+        let y_cen = 37.4981125   // lat
+        let x_cen = 127.0379399  // long
+        let map;
+        let markers = [];
+        let infowindows = [];
+
+        $(document).ready(function () {
+            map = new naver.maps.Map('map', {
+                center: new naver.maps.LatLng(y_cen, x_cen),
+                zoom: 12,
+                zoomControl: true,
+                zoomControlOptions: {
+                    style: naver.maps.ZoomControlStyle.SMALL,
+                    position: naver.maps.Position.TOP_RIGHT
+                }
+            });
+            get_matjip()
+        })
+
+        function make_card(i, matjip) {
+            let temp_html = ``
+            if('liked' in matjip){
+                temp_html = `<div class="card" id="card-${i}">
+                                <div class="card-body">
+                                    <h5 class="card-title"><a href="javascript: click2center(${i})" class="matjip-title">${matjip.title}</a></h5>
+                                    <h6 class="card-subtitle mb-2 text-muted">${matjip.category}</h6>
+                                    <i class="fa fa-bookmark" aria-hidden="true" onclick="like_matjip('${matjip.title}', '${matjip.address}', 'unlike')"></i>
+                                    <p class="card-text">${matjip.address}</p>
+                                    <p class="card-text" style="color:blue;">${matjip.show}</p>
+                                </div>
+                            </div>`
+            } else {
+                temp_html = `<div class="card" id="card-${i}">
+                                <div class="card-body">
+                                    <h5 class="card-title"><a href="javascript: click2center(${i})" class="matjip-title">${matjip.title}</a></h5>
+                                    <h6 class="card-subtitle mb-2 text-muted">${matjip.category}</h6>
+                                    <i class="fa fa-bookmark-o" aria-hidden="true" onclick="like_matjip('${matjip.title}', '${matjip.address}', 'like')"></i>
+                                    <p class="card-text">${matjip.address}</p>
+                                    <p class="card-text" style="color:blue;">${matjip.show}</p>
+                                </div>
+                            </div>`
+            }
+                $('#matjip-box').append(temp_html)
+
+        }
+
+        function make_marker(matjip) {
+            let marker_img = '';
+            if('liked' in matjip){
+                marker_img = "{{ url_for('static', filename='marker-liked.png') }}"
+            } else {
+                marker_img = "{{ url_for('static', filename='marker-default.png') }}"
+            }
+            let marker = new naver.maps.Marker({
+                position: new naver.maps.LatLng(matjip.mapy, matjip.mapx),
+                map: map,
+                icon: marker_img
+            });
+            markers.push(marker);
+            return marker;
+        }
+
+        function add_info(i, marker, matjip){
+            let html_temp = `<div class='iw-inner'>
+                                <h5>${matjip.title}</h5>
+                                <p>${matjip.address}</p>
+                                </div>`
+            let infowindow = new naver.maps.InfoWindow({
+                content: html_temp,
+                maxWidth: 200,
+                backgroundColor: '#fff',
+                borderColor: '#888',
+                borderWidth: 2,
+                anchorSize: new naver.maps.Size(15, 15),
+                anchorSkew: true,
+                anchorColor: '#fff',
+                pixelOffset: new naver.maps.Point(10, -10)
+            });
+            infowindows.push(infowindow)
+            naver.maps.Event.addListener(marker, 'click', function (e){
+                console.log(infowindow.getMap());
+                if(infowindow.getMap()){
+                    infowindow.close();
+                } else {
+                    infowindow.open(map, marker);
+                    map.setCenter(infowindow.position);
+                      $("#matjip-box").animate({
+                          scrollTop: $("#matjip-box").get(0).scrollTop + $(`#card-${i}`).position().top
+                      }, 2000);
+
+                }
+            })
+        }
+
+        function click2center(i) {
+            let marker = markers[i]
+            let infowindow = infowindows[i]
+            if (infowindow.getMap()){
+                infowindow.close();
+            } else {
+                infowindow.open(map, marker);
+                map.setCenter(infowindow.position)
+            }
+        }
+
+        function get_matjip() {
+            $('#matjip-box').empty();
+            for (let i=0; i<markers.length; i++){
+                markers[i].setMap(null);
+                infowindows[i].close()
+            }
+            markers = [];
+            infowindows = [];
+
+            $.ajax({
+                type: "GET",
+                data: {},
+                url: '/matjip',
+                success: function (response) {
+                    let matjips = response['matjip_list']
+                    for (let i = 0; i < matjips.length; i++) {
+                        let matjip = matjips[i]
+                        make_card(i, matjip)
+                        let marker = make_marker(matjip)
+                        add_info(i, marker, matjip)
+                    }
+                }
+            });
+        }
+
+        function like_matjip(title, address, action) {
+            $.ajax({
+                type: "POST",
+                data: {
+                    title_give: title,
+                    address_give: address,
+                    action_give: action
+                },
+                url: '/like_matjip',
+                success: function(response){
+                    if(response['result'] == 'success'){
+                        get_matjip()
+                    }
+                }
+            })
+        }
+    </script>
+
+</head>
+
+<body>
+<div class="wrap">
+    <div class="banner">
+        <div class="d-flex flex-column align-items-center"
+        style="background-color: rgba(0,0,0,0.5);width: 100%;height: 100%">
+            <h1 class="title mt-5 mb-2">맛집 지도</h1>
+            <button type="button" onclick="get_matjip()" class="btn btn-sparta">
+                새로고침하고 더 많은 맛집 보기
+            </button>
+        </div>
+    </div>
+    <div id="map"></div>
+
+    <div class="matjip-list" id="matjip-box">
+        <div class="card" id="card-0">
+            <div class="card-body">
+                <h5 class="card-title"><a href="#" class="matjip-title">혼가츠</a></h5>
+                <h6 class="card-subtitle mb-2 text-muted">일식</h6>
+                <p class="card-text">서울 마포구 와우산로21길 36-6 (서교동)</p>
+                <p class="card-text" style="color:blue;">생방송 투데이</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+
+</html>
